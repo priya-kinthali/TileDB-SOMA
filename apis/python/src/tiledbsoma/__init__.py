@@ -145,14 +145,7 @@ import pyarrow_hotfix
 
 from ._collection import Collection
 from ._constants import SOMA_JOINID
-from ._coordinates import (
-    Axis,
-    CompositeTransform,
-    CoordinateSystem,
-    IdentityTransform,
-    ScaleTransform,
-    TranslateTransform,
-)
+from ._coordinates import Axis, CoordinateSpace
 from ._dataframe import DataFrame
 from ._dense_nd_array import DenseNDArray
 from ._exception import (
@@ -191,8 +184,7 @@ __all__ = [
     "AxisColumnNames",
     "AxisQuery",
     "Collection",
-    "CoordinateSystem",
-    "CompositeTransform",
+    "CoordinateSpace",
     "DataFrame",
     "DenseNDArray",
     "DoesNotExistError",
@@ -203,13 +195,11 @@ __all__ = [
     "get_SOMA_version",
     "get_storage_engine",
     "IntIndexer",
-    "IdentityTransform",
     "Measurement",
     "NotCreateableError",
     "open",
     "Image2D",
     "ResultOrder",
-    "ScaleTransform",
     "show_package_versions",
     "SOMA_JOINID",
     "SOMAError",
@@ -224,5 +214,4 @@ __all__ = [
     "tiledbsoma_stats_dump",
     "tiledbsoma_stats_enable",
     "tiledbsoma_stats_reset",
-    "TranslateTransform",
 ]
