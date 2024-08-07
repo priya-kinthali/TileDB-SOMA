@@ -14,6 +14,7 @@ from typing_extensions import Final, Self
 
 from . import _funcs, _tdb_handles
 from ._collection import CollectionBase
+from ._coordinates import CoordinateSpace
 from ._dense_nd_array import DenseNDArray
 from ._soma_object import AnySOMAObject
 from ._types import OpenTimestamp
@@ -30,7 +31,7 @@ class Image2D(  # type: ignore[misc]  # __eq__ false positive
         Experimental.
     """
 
-    __slots__ = "_levels"
+    __slots__ = ("_levels", "_coord_space")
     _wrapper_type = _tdb_handles.Image2DWrapper
 
     _level_prefix: Final = "soma_level_"
@@ -97,6 +98,11 @@ class Image2D(  # type: ignore[misc]  # __eq__ false positive
         **kwargs: Any,
     ):
         super().__init__(handle, **kwargs)
+        coord_space = self.metadata.get("soma_coordinate_space")
+        if coord_space is None:
+            self._coord_space: Optional[CoordinateSpace] = None
+        else:
+            self._coord_space = CoordinateSpace.from_json(coord_space)
         self._levels: List[Image2D.LevelProperties] = []
         self._reset_levels()
 
@@ -165,6 +171,22 @@ class Image2D(  # type: ignore[misc]  # __eq__ false positive
             ),
             uri,
         )
+
+    @property
+    def coordinate_space(self) -> Optional[CoordinateSpace]:
+        """Coordinate system for this scene."""
+        return self._coord_space
+
+    @coordinate_space.setter
+    def coordinate_space(self, value: CoordinateSpace) -> None:
+        if not isinstance(value, CoordinateSpace):
+            raise TypeError(f"Invalid type {type(value).__name__}.")
+        self._coord_space = value
+
+    @coordinate_space.deleter
+    def coordinate_space(self) -> None:
+        del self.metadata["soma_coordinate_space"]
+        self._coord_space = None
 
     @property
     def level_count(self) -> int:

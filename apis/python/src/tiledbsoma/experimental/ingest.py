@@ -327,7 +327,9 @@ def _write_visium_data_to_experiment_uri(
     pixels_per_spot_radius = 0.5 * scale_factors["spot_diameter_fullres"]
 
     # Create axes and transformations
-    coordinate_system = CoordinateSpace((Axis(name="y"), Axis(name="x")))
+    coord_space = CoordinateSpace(
+        (Axis(name="y", units="pixels"), Axis(name="x", units="pixels"))
+    )
 
     # TODO: The `obs_df` should be in dataframe with only soma_joinid and obs_id. Not
     # currently bothering to check/enforce this.
@@ -352,7 +354,7 @@ def _write_visium_data_to_experiment_uri(
                 _maybe_set(
                     spatial, scene_name, scene, use_relative_uri=use_relative_uri
                 )
-                scene.metadata["soma_scene_coordinates"] = coordinate_system.to_json()
+                scene.coordinate_space = coord_space
 
                 # Write image data and add to the scene.
                 img_uri = f"{scene_uri}/img"
@@ -374,9 +376,7 @@ def _write_visium_data_to_experiment_uri(
                                 sample_image,
                                 use_relative_uri=use_relative_uri,
                             )
-                            sample_image.metadata[
-                                "soma_coordinates"
-                            ] = coordinate_system.to_json()
+                            sample_image.coordinate_space = coord_space
                             _write_visium_images(
                                 sample_image,
                                 scale_factors,
