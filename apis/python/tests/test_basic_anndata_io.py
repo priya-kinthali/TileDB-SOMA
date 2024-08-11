@@ -18,7 +18,7 @@ from tiledbsoma._soma_object import SOMAObject
 from tiledbsoma._util import verify_obs_and_var_eq
 import tiledb
 
-from ._util import TESTDATA
+from ._util import TESTDATA, make_df
 
 
 @pytest.fixture
@@ -996,13 +996,8 @@ def test_uns_io(tmp_path, outgest_uns_keys):
         "float_scalar": 8.5,
         "string_scalar": "hello",
         # These are stored in SOMA as SOMADataFrame
-        "pd_df_indexed": pd.DataFrame(
-            data={"column_1": np.asarray(["d", "e", "f"])},
-            index=np.arange(3).astype(str),
-        ),
-        "pd_df_nonindexed": pd.DataFrame(
-            data={"column_1": np.asarray(["g", "h", "i"])},
-        ),
+        "pd_df_indexed": make_df("0,1,2", column_1="d,e,f"),
+        "pd_df_nonindexed": make_df(column_1="g,h,i"),
         # These are stored in SOMA as SOMA ND arrays
         "np_ndarray_1d": np.asarray([1, 2, 3]),
         "np_ndarray_2d": np.asarray([[1, 2, 3], [4, 5, 6]]),
