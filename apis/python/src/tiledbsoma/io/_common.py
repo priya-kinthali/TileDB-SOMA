@@ -4,10 +4,11 @@
 # Licensed under the MIT License.
 
 """Common constants and types used during ingestion/outgestion."""
-
-from typing import Any, Mapping, Union
+from typing import List, Mapping, Union
 
 import h5py
+import numpy as np
+import pandas as pd
 import scipy.sparse as sp
 from anndata._core.sparse_dataset import SparseDataset
 
@@ -16,7 +17,11 @@ from tiledbsoma._types import NPNDArray
 SparseMatrix = Union[sp.csr_matrix, sp.csc_matrix, SparseDataset]
 DenseMatrix = Union[NPNDArray, h5py.Dataset]
 Matrix = Union[DenseMatrix, SparseMatrix]
-UnsMapping = Mapping[str, Any]
+UnsScalar = Union[str, int, float, np.generic]
+UnsNode = Union[
+    UnsScalar, List[UnsScalar], pd.DataFrame, NPNDArray, Mapping[str, "UnsNode"]
+]
+UnsMapping = Mapping[str, UnsNode]
 
 # Arrays of strings from AnnData's uns are stored in SOMA as SOMADataFrame,
 # since SOMA ND arrays are necessarily arrays *of numbers*. This is okay since

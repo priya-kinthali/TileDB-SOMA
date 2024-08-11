@@ -53,7 +53,7 @@ def _string_dict_from_arrow_schema(schema: pa.Schema) -> Dict[str, str]:
 
 def _string_dict_from_pandas_dataframe(
     df: pd.DataFrame,
-    default_index_name: str,
+    default_index_name: Optional[str],
 ) -> Dict[str, str]:
     """
     Here we provide compatibility with the ingestor.

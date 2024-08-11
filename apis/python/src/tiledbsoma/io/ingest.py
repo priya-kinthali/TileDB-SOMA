@@ -8,10 +8,10 @@
 This module contains methods to generate SOMA artifacts starting from
 other formats. Currently only ``.h5ad`` (`AnnData <https://anndata.readthedocs.io/>`_) is supported.
 """
-
 import json
 import math
 import time
+from os.path import join
 from typing import (
     Any,
     Dict,
@@ -92,6 +92,7 @@ from ._common import (
     Matrix,
     SparseMatrix,
     UnsMapping,
+    UnsNode,
 )
 from ._registration import (
     AxisIDMapping,
@@ -1184,7 +1185,7 @@ def _write_dataframe_impl(
     platform_config: Optional[PlatformConfig] = None,
     context: Optional[SOMATileDBContext] = None,
 ) -> DataFrame:
-    s = _util.get_start_stamp()
+    start = _util.get_start_stamp()
     logging.log_io(None, f"START  WRITING {df_uri}")
 
     arrow_table = df_to_arrow(df)
@@ -1218,14 +1219,36 @@ def _write_dataframe_impl(
             if _chunk_is_contained_in(dim_range, storage_ned):
                 logging.log_io(
                     f"Skipped {df_uri}",
-                    _util.format_elapsed(s, f"SKIPPED {df_uri}"),
+                    _util.format_elapsed(start, f"SKIPPED {df_uri}"),
                 )
                 return soma_df
 
+    return _write_soma_dataframe_impl(
+        soma_df=soma_df,
+        df_uri=df_uri,
+        arrow_table=arrow_table,
+        start=start,
+        ingestion_params=ingestion_params,
+        additional_metadata=additional_metadata,
+        original_index_metadata=original_index_metadata,
+        platform_config=platform_config,
+    )
+
+
+def _write_soma_dataframe_impl(
+    soma_df: DataFrame,
+    df_uri: str,
+    arrow_table: pa.Table,
+    start: float,
+    ingestion_params: IngestionParams,
+    additional_metadata: AdditionalMetadata = None,
+    original_index_metadata: OriginalIndexMetadata = None,
+    platform_config: Optional[PlatformConfig] = None,
+) -> DataFrame:
     if ingestion_params.write_schema_no_data:
         logging.log_io(
             f"Wrote schema {df_uri}",
-            _util.format_elapsed(s, f"FINISH WRITING SCHEMA {df_uri}"),
+            _util.format_elapsed(start, f"FINISH WRITING SCHEMA {df_uri}"),
         )
         add_metadata(soma_df, additional_metadata)
         return soma_df
@@ -1247,7 +1270,7 @@ def _write_dataframe_impl(
 
     logging.log_io(
         f"Wrote   {df_uri}",
-        _util.format_elapsed(s, f"FINISH WRITING {df_uri}"),
+        _util.format_elapsed(start, f"FINISH WRITING {df_uri}"),
     )
     return soma_df
 
@@ -1473,6 +1496,135 @@ def update_var(
     )
 
 
+def update_uns(
+    exp: Experiment,
+    uns: UnsMapping,
+    measurement_name: str,
+    *,
+    context: Optional[SOMATileDBContext] = None,
+    platform_config: Optional[PlatformConfig] = None,
+    default_index_name: Optional[str] = None,
+) -> None:
+    """
+    Update the given experiment/measurement's "uns" Collection.
+
+    `uns` (short for unstructured data) is conceptually a dictionary, where nodes can be scalars,
+    DataFrames, arrays (dense or sparse), or recursively-nested dictionaries.
+
+    This function makes a best effort at changing the existing `uns` Collection to match the
+    provided `uns` dictionary. It refuses to change the type of any existing node, and additional
+    restrictions apply to DataFrames (schemas and shapes must match) and arrays (TODO).
+
+    Args:
+        exp: The :class:`SOMAExperiment` whose ``uns`` is to be updated. Must
+        be opened for write.
+
+        measurement_name: Specifies which measurement's ``uns`` within the experiment
+        is to be updated.
+
+        uns: a Pandas dataframe with the desired contents.
+
+        context: Optional :class:`SOMATileDBContext` containing storage parameters, etc.
+
+        platform_config: Platform-specific options used to update this array, provided
+        in the form ``{"tiledb": {"create": {"dataframe_dim_zstd_level": 7}}}``
+
+        default_index_name: Fallback name to use for columns representing `pd.DataFrame` indices.
+    """
+    if measurement_name not in exp.ms:
+        raise ValueError(
+            f"cannot find measurement name {measurement_name} within experiment at {exp.uri}"
+        )
+    _update_uns_dict(
+        exp.ms[measurement_name]["uns"],  # type: ignore[arg-type]
+        uns,
+        context=context,
+        platform_config=platform_config,
+        default_index_name=default_index_name,
+    )
+
+
+def _update_uns_dict(
+    coll: AnyTileDBCollection,
+    uns: UnsMapping,
+    *,
+    context: Optional[SOMATileDBContext] = None,
+    platform_config: Optional[PlatformConfig] = None,
+    default_index_name: Optional[str] = None,
+) -> None:
+    for k, v in uns.items():
+        cur = None
+        exists = False
+        if k in coll:
+            cur = coll[k]
+            exists = True
+        if k in coll.metadata:
+            cur = coll.metadata[k]
+            exists = True
+
+        if isinstance(v, (str, int, float)):
+            if k in coll:
+                raise ValueError(
+                    f"can't overwrite {type(cur).__name__} at {coll.uri}/{k} with scalar {v}"
+                )
+            coll.metadata[k] = v
+        elif isinstance(v, pd.DataFrame):
+            if exists:
+                if not isinstance(cur, DataFrame):
+                    raise ValueError(
+                        f"expected DataFrame at {coll.uri}/{k}, found {type(cur).__name__}"
+                    )
+                _update_dataframe(
+                    cur,
+                    v,
+                    f"update_uns_dict {k}",
+                    context=context,
+                    platform_config=platform_config,
+                    default_index_name=default_index_name,
+                    verify_signature_match=True,
+                )
+            else:
+                df = v.copy()
+                original_index_metadata = _prepare_df_for_ingest(df, default_index_name)
+                axis_mapping = AxisIDMapping.identity(v.shape[0])
+                df[SOMA_JOINID] = np.asarray(axis_mapping.data, dtype=np.int64)
+                df.set_index(SOMA_JOINID, inplace=True)
+                start = _util.get_start_stamp()
+                arrow_table = df_to_arrow(df)
+                df_uri = join(coll.uri, k)
+                soma_df = DataFrame.create(
+                    df_uri,
+                    schema=arrow_table.schema,
+                    platform_config=platform_config,
+                    context=context,
+                )
+                _maybe_set(coll, k, soma_df, use_relative_uri=None)
+                _write_soma_dataframe_impl(
+                    soma_df=soma_df,
+                    df_uri=df_uri,
+                    arrow_table=arrow_table,
+                    start=start,
+                    ingestion_params=IngestionParams("write", label_mapping=None),
+                    original_index_metadata=original_index_metadata,
+                    platform_config=platform_config,
+                )
+        elif isinstance(v, dict):
+            if exists:
+                if not isinstance(cur, Collection):
+                    raise ValueError(
+                        f"expected Collection at {coll.uri}/{k}, found {type(cur).__name__}"
+                    )
+            _update_uns_dict(
+                coll[k],
+                v,
+                context=context,
+                platform_config=platform_config,
+                default_index_name=default_index_name,
+            )
+        elif isinstance(v, np.ndarray):
+            raise NotImplementedError("uns array update not yet supported")
+
+
 def _update_dataframe(
     sdf: DataFrame,
     new_data: pd.DataFrame,
@@ -1480,7 +1632,8 @@ def _update_dataframe(
     *,
     context: Optional[SOMATileDBContext] = None,
     platform_config: Optional[PlatformConfig],
-    default_index_name: str,
+    default_index_name: Optional[str],
+    verify_signature_match: bool = False,
 ) -> None:
     """
     See ``update_obs`` and ``update_var``. This is common helper code shared by both.
@@ -1530,6 +1683,14 @@ def _update_dataframe(
     drop_keys = old_keys.difference(new_keys)
     add_keys = new_keys.difference(old_keys)
     common_keys = old_keys.intersection(new_keys)
+    if verify_signature_match:
+        if add_keys or drop_keys:
+            msg = f"{caller_name}: columns don't match"
+            if drop_keys:
+                msg += f", missing [{','.join(drop_keys)}]"
+            if add_keys:
+                msg += f", adding [{','.join(add_keys)}]"
+            raise ValueError(msg)
 
     msgs = []
     for key in common_keys:
@@ -2485,7 +2646,7 @@ def _maybe_ingest_uns(
 def _ingest_uns_dict(
     parent: AnyTileDBCollection,
     parent_key: str,
-    dct: Mapping[str, object],
+    dct: UnsMapping,
     *,
     platform_config: Optional[PlatformConfig],
     context: Optional[SOMATileDBContext],
@@ -2524,9 +2685,9 @@ def _ingest_uns_dict(
 
 
 def _ingest_uns_node(
-    coll: Any,
-    key: Any,
-    value: Any,
+    coll: AnyTileDBCollection,
+    key: str,
+    value: UnsNode,
     *,
     platform_config: Optional[PlatformConfig],
     context: Optional[SOMATileDBContext],
