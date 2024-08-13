@@ -11,10 +11,10 @@ on:
       - '!apis/python/**'
       - '!docs/**'
       - '!LICENSE'
-  push:
-    branches:
-      - main
-      - 'release-*'
+  # push:
+  #   branches:
+  #     - main
+  #     - 'release-*'
   workflow_dispatch:
 
 env:
