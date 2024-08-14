@@ -6,10 +6,10 @@ on:
       - "apis/python/**"
       - "apis/r/**"
       - ".pre-commit-config.yaml"
-  # push:
-  #   branches:
-  #     - main
-  #     - 'release-*'
+  push:
+    branches:
+      - main
+      - 'release-*'
   workflow_dispatch:
 
 jobs:
