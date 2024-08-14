@@ -8,10 +8,10 @@ on:
     #  - "apis/python/**"
     #  - "apis/r/**"
     #  - "apis/system/**"
-  # push:
-  #   branches:
-  #     - main
-  #     - 'release-*'
+  push:
+    branches:
+      - main
+      - 'release-*'
   workflow_dispatch:
 
 jobs:
